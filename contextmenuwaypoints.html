@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+  <title>ContextMenu routing</title>
+  <link rel="stylesheet" type="text/css" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css" />
+
+  <!-- Your CSS code -->
+  <style type="text/css">
+    body {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      margin: 0px;
+      padding: 0px;
+      overflow: hidden;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      background-color: gray;
+    }
+
+    #routingInputContainer {
+      width: 300px;
+      height: 110px;
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      padding: 10px;
+      background-color: rgba(00, 130, 130, 0.8);
+      color: white;
+    }
+
+    .routingInput {
+      width: 95%;
+    }
+  </style>
+  <script type="text/javascript" src='../test-credentials.js'></script>
+  <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
+  <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
+  <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
+  <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
+  <script type="text/javascript">window.ENV_VARIABLE = 'https://developer.here.com'</script>
+  <script src='https://developer.here.com/javascript/src/iframeheight.js'></script>
+</head>
+
+<body>
+  <div id="map"></div>
+  <div id="routingInputContainer">
+    Starting point:
+    <input id="inputStart" class="routingInput" disabled />
+    Destination point:
+    <input id="inputDest" class="routingInput" disabled />
+    <br /><br />
+    <span id="info"></span>
+  </div>
+
+  <!-- Your JavaScript code -->
+  <script type="text/javascript">
+    function addContextMenu(map, geocodingService) {
+      // First we need to subscribe to the "contextmenu" event on the map
+      map.addEventListener('contextmenu', function (evt) {
+        currentGeocodingResultObject = null;
+        // As we already handle contextmenu event callback on middle waypoints
+        // we don't do anything if target is different than the map.
+        if (evt.target !== map) {
+          return;
+        }
+
+        // "contextmenu" event might be triggered not only by a pointer,
+        // but a keyboard button as well. That's why ContextMenuEvent
+        // doesn't have a "currentPointer" property.
+        // Instead it has "viewportX" and "viewportY" properties
+        // for the associates position.
+
+        // Get geo coordinates from the screen coordinates.
+        let coord = map.screenToGeo(evt.viewportX, evt.viewportY);
+
+        // Now we get the name of the place we clicked using reverse geocode with API v7
+        fetch(`https://revgeocode.search.hereapi.com/v1/revgeocode?at=${coord.lat},${coord.lng}&lang=en-US&apikey=<<hereAPIkey>>`)
+          .then(response => response.json())
+          .then(data => {
+            if (data.items && data.items.length > 0) {
+              let addressLabel = data.items[0].address.label;
+              updateContextMenuLabel(evt, addressLabel);
+              currentGeocodingResultObject = {
+                label: addressLabel,
+                coord
+              };
+            } else {
+              let coordLabel = `${Math.abs(coord.lat.toFixed(4))}${(coord.lat > 0) ? 'N' : 'S'}, ${Math.abs(coord.lng.toFixed(4))}${(coord.lng > 0) ? 'E' : 'W'}`;
+              updateContextMenuLabel(evt, coordLabel);
+              currentGeocodingResultObject = {
+                label: coordLabel,
+                coord
+              };
+            }
+          })
+          .catch(err => {
+            currentGeocodingResultObject = null;
+            console.error(err);
+          });
+
+        // In order to add menu items, you have to push them to the "items"
+        // property of the event object. That has to be done synchronously, otherwise
+        // the ui component will not contain them. However you can change the menu entry text asynchronously.
+        pushDefaultContextMenuItems(evt, coord);
+      });
+    }
+
+    function pushDefaultContextMenuItems(evt, coord) {
+      evt.items.push(
+        // menu item with label only, which displays address or the current coordinates
+        new H.util.ContextItem({
+          label: ''
+        }),
+        // It is possible to add a seperator between items in order to logically group them.
+        H.util.ContextItem.SEPARATOR,
+        // menu item to set starting point
+        new H.util.ContextItem({
+          label: 'Set as starting point',
+          callback: function () {
+            setStartingPoint(currentGeocodingResultObject);
+          }
+        }),
+        // menu item to set destination point
+        new H.util.ContextItem({
+          label: 'Set as destination',
+          callback: function () {
+            setDestination(currentGeocodingResultObject);
+          }
+        })
+      );
+
+      // add  menu item for adding waypoints, if start % end already defined
+      if (waypoints.length >= 2 && waypoints[0] && waypoints[1]) {
+        evt.items.push(
+          // menu item to set middle waypoint
+          new H.util.ContextItem({
+            label: 'Add waypoint',
+            callback: function () {
+              addWaypoint(currentGeocodingResultObject);
+            }
+          })
+        );
+      }
+    }
+
+    function updateContextMenuLabel(evt, addressLabel) {
+      var item = evt.items[0];
+      item.setLabel(addressLabel);
+    }
+
+    function setStartingPoint(geocodingResult) {
+      if (geocodingResult) {
+        // update input value
+        document.getElementById('inputStart').value = geocodingResult.label;
+
+        // set first waypoint
+        waypoints[0] = {
+          label: geocodingResult.label,
+          coord: geocodingResult.coord
+        }
+
+        // add marker / or updated its position for starting point
+        if (startMarkerObject) {
+          startMarkerObject.setGeometry(geocodingResult.coord);
+        } else {
+          var pngIcon = new H.map.Icon("<<urlIcon03>>", { size: { w: 40, h: 40 } });
+          startMarkerObject = new H.map.Marker(geocodingResult.coord, { icon: pngIcon });
+          map.addObject(startMarkerObject);
+        }
+        FileMaker.PerformScript("js_set_route_start_end", 1 + "\n" + geocodingResult.label);
+      }
+
+      // try to calculate route
+      calculateRoute();
+    }
+
+    function setDestination(geocodingResult) {
+      if (geocodingResult) {
+        // update input value
+        document.getElementById('inputDest').value = geocodingResult.label;
+
+        // set the last waypoint
+        let index = (waypoints.length < 2) ? 1 : (waypoints.length - 1);
+
+        waypoints[index] = {
+          label: geocodingResult.label,
+          coord: geocodingResult.coord
+        }
+
+        // add marker / or updated its position for destination point
+        if (destMarkerObject) {
+          destMarkerObject.setGeometry(geocodingResult.coord);
+        } else {
+          destMarkerObject = map.addObject(new H.map.Marker(
+            geocodingResult.coord, {
+            icon: new H.map.Icon(
+              '<<urlIcon04>>', {
+              size: {
+                h: 40,
+                w: 40
+              }
+            })
+          }
+          ));
+        }
+        FileMaker.PerformScript("js_set_route_start_end", 2 + "\n" + geocodingResult.label);
+      }
+      //FileMaker.PerformScript("js_test", geocodingResult.coord);
+      // try to calculate route
+      calculateRoute()
+    }
+
+    function addWaypoint(geocodingResult) {
+      if (geocodingResult) {
+        let index = waypoints.length - 1,
+          icon = new H.map.Icon(
+            svg.replace('INDEX', index), {
+            size: {
+              w: iconWidth,
+              h: iconHeight
+            }
+          }
+          ),
+          marker = new H.map.Marker(
+            geocodingResult.coord, {
+            icon: icon,
+            data: {
+              'index': index
+            },
+            // Enable dragging
+            volatility: true,
+            draggable: true
+          }
+          );
+        marker.volatility = true;
+        marker.draggable = true;
+
+        map.addObject(marker);
+
+        // Add context menu to remove waypoint
+        marker.addEventListener('contextmenu', function (evt) {
+          evt.items.push(
+            new H.util.ContextItem({
+              label: 'Remove waypoint',
+              callback: function () {
+                removeWaypoint(marker);
+              }
+            })
+          );
+        });
+
+        // Update waypoint coordinates on drag event
+        marker.addEventListener('dragstart', function (ev) {
+          behavior.disable();  // Disable map dragging
+        });
+
+        marker.addEventListener('dragend', function (ev) {
+          behavior.enable();  // Re-enable map dragging
+          updateWaypointCoords(marker);
+          calculateRoute();
+        });
+
+        marker.addEventListener('drag', function (ev) {
+          let newCoord = map.screenToGeo(ev.currentPointer.viewportX, ev.currentPointer.viewportY);
+          marker.setGeometry(newCoord);
+        });
+
+        // Add waypoint before the destination
+        waypoints.splice(waypoints.length - 1, 0, {
+          label: geocodingResult.label,
+          coord: geocodingResult.coord,
+          marker: marker
+        });
+        //FileMaker.PerformScript("js_test", geocodingResult.label);
+        calculateRoute();
+      }
+    }
+
+    function updateWaypointCoords(marker) {
+      let index = marker.getData().index;
+      waypoints[index].coord = marker.getGeometry();
+    }
+
+    function removeWaypoint(markerObject) {
+      // remove from waypoints list
+      waypoints.splice(markerObject.getData()['index'], 1)[0];
+
+      // remove marker object from map
+      map.removeObject(markerObject);
+
+      // reset icons and data for rest of waypoint markers
+      let index = 0;
+      waypoints.forEach(function (waypoint) {
+        if (waypoint['marker']) {
+          waypoint['marker'].setIcon(new H.map.Icon(
+            svg.replace('INDEX', index), {
+            size: {
+              w: iconWidth,
+              h: iconHeight
+            }
+          }
+          ));
+          waypoint['marker'].setData({
+            'index': index
+          });
+        }
+        index++;
+      });
+
+      // recalculate the route
+      calculateRoute();
+    }
+
+    function calculateRoute() {
+      if (waypoints.length >= 2 && waypoints[0] && waypoints[1]) {
+        // delete previous routing result information
+        document.getElementById('info').innerHTML = '';
+
+        //Filemaker set parameters
+        let params = {
+          mode: '<<routingMode>>;<<transportMode>>',
+          routeattributes: 'summary,shape,legs',
+          representation: 'display',
+          departure: '<<departure>>',
+          metricSystem: '<<units>>',
+          height: '<<height>>',
+          width: '<<width>>',
+          length: '<<length>>',
+          weight: '<<grossWeight>>',
+          axleCount: '<<axleCount>>',
+          tunnelCategory: '<<tunnelCategory>>',
+          truckType: 'tractorTruck',
+          trailerCount: '<<trailerCount>>'
+        },
+          index = 0;
+
+        // add waypoints
+        waypoints.forEach(function (point, i) {
+          // const markerId = waypoints.id;
+
+          //Assign stopOver to destinations and passThrough for every other waypoints so it routes nicer
+          if (i === 0 || i === waypoints.length - 1) {
+            params['waypoint' + index++] = 'geo!' + point.coord.lat + ',' + point.coord.lng;
+          } else {
+            params['waypoint' + index++] = 'passThrough!' + point.coord.lat + ',' + point.coord.lng;
+          }
+        });
+
+        // calculate new route
+        routingService.calculateRoute(
+          params,
+          function (result) {
+            let res = result.response;
+            if (res.route[0]) {
+              var lineString = new H.geo.LineString();
+              res.route[0].shape.forEach(function (latLng) {
+                var splitLatLng = latLng.split(',')
+                lineString.pushLatLngAlt(splitLatLng[0], splitLatLng[1], 0);
+              })
+
+              // add / update route Polyline
+              if (routeObject) {
+                routeObject.setGeometry(lineString);
+              } else {
+                routeObject = map.addObject(new H.map.Polyline(lineString, {
+                  style: {
+                    strokeColor: 'rgb(0, 130, 130)',
+                    lineWidth: 5
+                  }
+                }));
+              }
+
+              // add / update polyline from original start position to mapped start position
+              let startLineString = new H.geo.LineString(),
+                splitLatLng = res.route[0].shape[0].split(',');
+
+              startLineString.pushPoint(waypoints[0].coord);
+              startLineString.pushLatLngAlt(splitLatLng[0], splitLatLng[1], 0);
+
+              if (startRouteObject) {
+                startRouteObject.setGeometry(startLineString);
+              } else {
+                startRouteObject = new H.map.Polyline(startLineString, {
+                  style: {
+                    strokeColor: 'rgba(20, 110, 110, 0.7)',
+                    lineWidth: 5,
+                    lineDash: [1, 5],
+                    lineCap: 'round'
+                  }
+                });
+                map.addObject(startRouteObject);
+              }
+
+              // add / update polyline from mapped to original destination position
+              let destLineString = new H.geo.LineString();
+              splitLatLng = res.route[0].shape[res.route[0].shape.length - 1].split(',')
+              destLineString.pushLatLngAlt(splitLatLng[0], splitLatLng[1], 0);
+              destLineString.pushPoint(waypoints[waypoints.length - 1].coord);
+              if (destRouteObject) {
+                destRouteObject.setGeometry(destLineString);
+              } else {
+                destRouteObject = map.addObject(new H.map.Polyline(destLineString, {
+                  style: {
+                    strokeColor: 'rgba(20, 130, 130, 0.7)',
+                    lineWidth: 5,
+                    lineDash: [1, 5],
+                    lineCap: 'round'
+                  }
+                }));
+              }
+
+              // update summary text
+              document.getElementById('info').innerHTML = res.route[0].summary.text
+
+              // Extract and process step-by-step instructions from all legs
+              let instructions = res.route[0].leg.flatMap(leg =>
+                leg.maneuver.map(m => {
+                  let parser = new DOMParser();
+                  let doc = parser.parseFromString(m.instruction, 'text/html');
+                  return doc.body.textContent || "";
+                })
+              );
+
+              // Combine the instructions with newlines
+              let instructionsText = instructions.join(';');
+
+              // Pass to FileMaker
+              FileMaker.PerformScript("js_set_fields_with_waypoints", JSON.stringify(res) + "\n" + instructionsText + "\n" + res.route[0].waypoint.length);
+            }
+          },
+          function (err) {
+            document.getElementById('info').innerHTML = err;
+            error = err;
+          });
+      }
+    }
+
+    // Step 1: initialize communication with the platform
+    // In your own code, replace variable window.apikey with your own apikey
+    const platform = new H.service.Platform({
+      apikey: '<<hereAPIkey>>'
+    });
+    const maptypes = platform.createDefaultLayers();
+
+    // Step 2: initialize a map
+    const map = new H.Map(document.getElementById('map'),
+      maptypes.vector.normal.truck, {
+      center: {
+        lat: <<centerLat>>,
+        lng: <<centerLng>>
+    },
+      zoom: <<centerZoom>>,
+      pixelRatio: window.devicePixelRatio || 1
+    });
+
+    map.getViewPort().setPadding(30, 30, 30, 30);
+
+    // add a resize listener to make sure that the map occupies the whole container
+    window.addEventListener('resize', () => map.getViewPort().resize());
+
+    // Step 3: make the map interactive
+    // MapEvents enables the event system
+    // Behavior implements default interactions for pan/zoom (also on mobile touch environments)
+    const behavior = new H.mapevents.Behavior(new H.mapevents.MapEvents(map));
+
+    // Create the default UI components
+    const ui = H.ui.UI.createDefault(map, maptypes);
+
+    // Create geocoding and routing service
+    var geocodingService =
+      routingService = platform.getRoutingService(),
+      currentGeocodingResultObject,
+      waypoints = [],
+      startRouteObject,
+      destRouteObject,
+      routeObject,
+      startMarkerObject,
+      destMarkerObject,
+      iconWidth = 28,
+      iconHeight = 36,
+      svg = `<svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="${iconWidth}px"
+          height="${iconHeight}px"
+        >
+          <style>
+            .text {
+              font-size: ${iconWidth / 2}px;
+              fill: white;
+            }
+          </style>
+
+          <path
+            d="M 13 0 C 9.5 0 6.3 1.3 3.8 3.8 C 1.4 7.8 0 9.4 0 12.8 C 0 16.3 1.4 19.5 3.8 21.9 L 13 31 L 22.2
+               21.9 C 24.6 19.5 25.9 16.3 25.9 12.8 C 25.9 9.4 24.6 6.1 22.1 3.8 C 19.7 1.3 16.5 0 13 0 Z"
+            fill="white"
+          />
+          <path
+            d="M 13 2.2 C 6 2.2 2.3 7.2 2.1 12.8 C 2.1 16.1 3.1 18.4 5.2 20.5 L 13 28.2 L 20.8 20.5 C
+               22.9 18.4 23.8 16.2 23.8 12.8 C 23.6 7.07 20 2.2 13 2.2 Z"
+            fill="rgba(50, 150, 50, 0.8)"
+          />
+          <text
+            x="${iconWidth / 2 - iconWidth / 5}"
+            y="${iconHeight / 2}"
+            class="text"
+          >
+            INDEX
+          </text>
+        </svg>`;
+
+    // Predefined coordinates for starting and destination points
+    const predefinedStartCoord = { lat: <<StartLat>>, lng: <<StartLng>> };
+    const predefinedDestCoord = { lat: <<EndLat>>, lng: <<EndLng>> };
+
+    function setPredefinedPoints() {
+      fetch(`https://revgeocode.search.hereapi.com/v1/revgeocode?at=${predefinedStartCoord.lat},${predefinedStartCoord.lng}&lang=en-US&apikey=<<hereAPIkey>>`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.items && data.items.length > 0) {
+            setStartingPoint({
+              label: data.items[0].address.label,
+              coord: predefinedStartCoord,
+              id: 'P'
+            });
+          }
+        });
+
+      fetch(`https://revgeocode.search.hereapi.com/v1/revgeocode?at=${predefinedDestCoord.lat},${predefinedDestCoord.lng}&lang=en-US&apikey=<<hereAPIkey>>`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.items && data.items.length > 0) {
+            setDestination({
+              label: data.items[0].address.label,
+              coord: predefinedDestCoord,
+              id: 'J'
+            });
+          }
+        });
+    }
+
+    // Step 5: main logic
+    addContextMenu(map, geocodingService);
+    setPredefinedPoints();  // Set start and destination points at launch
+  </script>
+</body>
+
+</html>
