@@ -1,48 +1,53 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <meta http-equiv="Content-type" content="text/html;charset=UTF-8">
-    <title>Polyline on the Map</title>
-    <link rel="stylesheet" type="text/css" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css" />
-    <style type="text/css">
-        #map {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0 ;
-        background: grey;
-        }
-        #panel {
-        width: 100%;
-        height: 250px;
-        }
-    </style>
-    <script type="text/javascript" src='../test-credentials.js'></script>
-    <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
-    <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
-    <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
-    <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
-  <script type="text/javascript" >window.ENV_VARIABLE = 'https://developer.here.com'</script>
-  <script src='https://developer.here.com/javascript/src/iframeheight.js'></script></head>
-  <body id="markers-on-the-map">
-    <div id="map"></div>
-    <script type="text/javascript">
-    
+
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+  <title>Polyline on the Map</title>
+  <link rel="stylesheet" type="text/css" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css" />
+  <style type="text/css">
+    #map {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: grey;
+    }
+
+    #panel {
+      width: 100%;
+      height: 250px;
+    }
+  </style>
+  <script type="text/javascript" src='../test-credentials.js'></script>
+  <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
+  <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
+  <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
+  <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
+  <script type="text/javascript">window.ENV_VARIABLE = 'https://developer.here.com'</script>
+  <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-harp.js"></script>
+  <script src='https://developer.here.com/javascript/src/iframeheight.js'></script>
+</head>
+
+<body id="markers-on-the-map">
+  <div id="map"></div>
+  <script type="text/javascript">
+
     /*
     * Adds a polyline between Dublin, London, Paris and Berlin to the map
     *
     * @param  {H.Map} map      A HERE Map instance within the application
     */
-    function addPolylineToMap(map) {    
+    function addPolylineToMap(map) {
       var lineString = new H.geo.LineString();
 
       <<polylineJSList>>
 
-      map.addObject(new H.map.Polyline(
-        lineString, { style: { lineWidth: 4 }}
-      ));
+        map.addObject(new H.map.Polyline(
+          lineString, { style: { lineWidth: 4 } }
+        ));
     }
 
     /**
@@ -52,43 +57,59 @@
     //Step 1: initialize communication with the platform
     // In your own code, replace variable window.apikey with your own apikey
     var platform = new H.service.Platform({
-      apikey: '<<hereAPIkey>>'
+      apikey: '<<hereAPIkey>>',
+      units: '<<units>>'
     });
-    var defaultLayers = platform.createDefaultLayers();
+
+    // Use HARP as the map engine type because it's new and shiny
+    const engineType = H.Map.EngineType['HARP'];
+
+    var defaultLayers = platform.createDefaultLayers({engineType});
 
     //Step 2: initialize a map
     var map = new H.Map(document.getElementById('map'),
-      defaultLayers.vector.normal.truck,{
-      center: {lat:<<centerLat>>, lng:<<centerLng>>},
+      defaultLayers.vector.normal.truck, {
+      center: { lat:<<centerLat>>, lng:<<centerLng>>},
       zoom: <<centerZoom>>,
-      pixelRatio: window.devicePixelRatio || 1
+      pixelRatio: window.devicePixelRatio || 1,
+      engineType,
     });
 
- // Marker code goes here
-        var LocationOfMarker = { lat: <<StartLat>>, lng: <<StartLng>> };
+    setTimeout(() => {
+            map
+                .getBaseLayer()
+                .getProvider()
+                .getStyle()
+                .setEnabledFeatures([
+                    { feature: "vehicle restrictions", mode: "active & inactive" },
+                ]);
+    }, 500);
 
-        // optionally - resize a larger PNG image to a specific size
-        var pngIcon = new H.map.Icon("<<urlIcon03>>", { size: { w: 40, h: 40} });
+    // Marker code goes here
+    var LocationOfMarker = { lat: <<StartLat>>, lng: <<StartLng>> };
 
-        // Create a marker using the previously instantiated icon:
-        var marker = new H.map.Marker(LocationOfMarker, { icon: pngIcon });
+    // optionally - resize a larger PNG image to a specific size
+    var pngIcon = new H.map.Icon("<<urlIcon03>>", { size: { w: 40, h: 40 } });
 
-        // Add the marker to the map:
-        map.addObject(marker);
-        
+    // Create a marker using the previously instantiated icon:
+    var marker = new H.map.Marker(LocationOfMarker, { icon: pngIcon });
 
-        var LocationOfMarker = { lat: <<EndLat>>, lng: <<EndLng>> };
+    // Add the marker to the map:
+    map.addObject(marker);
 
-        // optionally - resize a larger PNG image to a specific size
-        var pngIcon = new H.map.Icon("<<urlIcon04>>", { size: { w: 40, h: 40} });
 
-        // Create a marker using the previously instantiated icon:
-        var marker = new H.map.Marker(LocationOfMarker, { icon: pngIcon });
+    var LocationOfMarker = { lat: <<EndLat>>, lng: <<EndLng>> };
 
-        // Add the marker to the map:
-        map.addObject(marker);
-        
-        
+    // optionally - resize a larger PNG image to a specific size
+    var pngIcon = new H.map.Icon("<<urlIcon04>>", { size: { w: 40, h: 40 } });
+
+    // Create a marker using the previously instantiated icon:
+    var marker = new H.map.Marker(LocationOfMarker, { icon: pngIcon });
+
+    // Add the marker to the map:
+    map.addObject(marker);
+
+
     // add a resize listener to make sure that the map occupies the whole container
     window.addEventListener('resize', () => map.getViewPort().resize());
 
@@ -103,7 +124,8 @@
 
     // Now use the map as required...
     addPolylineToMap(map);
-    
-    </script>
-  </body>
+
+  </script>
+</body>
+
 </html>
