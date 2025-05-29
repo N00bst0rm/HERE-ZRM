@@ -55,11 +55,10 @@
             'units': 'imperial'
         });
 
-        // Use HARP as the map engine type because it's new and shiny
         const engineType = H.Map.EngineType['HARP'];
 
         // Obtain the default map types from the platform object:
-        const defaultLayers = platform.createDefaultLayers({engineType});
+        const defaultLayers = platform.createDefaultLayers({ engineType });
 
         // Instantiate (and display) a map:
         var map = new H.Map(
@@ -68,8 +67,9 @@
             zoom: 11.5,
             center: {
                 lat: 42.595195,
-                lng: -87.89169
+                lng: -87.8916901
             },
+            engineType
         });
 
         setTimeout(() => {
@@ -114,7 +114,7 @@
             // const distance = (summary.length / 1000).toFixed(2) + ' km'; // Convert meters to kilometers
             // const travelTime = new Date(summary.travelTime * 1000).toISOString().substr(11, 8); // Convert seconds to HH:MM:SS
 
-            updateInfoBox(`Travel Time: ${Math.round(summary.duration / 60)} mins\nDistance: ${(summary.length / 1000  * 0.621371).toFixed(1)} mi`);
+            updateInfoBox(`Travel Time: ${Math.round(summary.duration / 60)} mins\nDistance: ${(summary.length / 1000 * 0.621371).toFixed(1)} mi`);
 
             const lineStrings = [];
             sections.forEach((section) => {
@@ -192,24 +192,24 @@
             map.addObject(marker);
 
             if (id === 'P') {
-                    fetch(`https://revgeocode.search.hereapi.com/v1/revgeocode?at=${position.lat},${position.lng}&lang=en-US&apikey=U_ktAgnexJuV96n0rV0pnH9GN8kKRieLHlhoiMRIpbo`)
-                        .then(response => response.json())
-                        .then(data => {
-                            FileMaker.PerformScript("js_set_route_start_end", 1 + "\n" + data.items[0].address.label + '\n' + JSON.stringify(position));
-                        })
-                        .catch(err => {
-                            console.error(err);
-                         });
-                } else if (id === 'J') {
-                    fetch(`https://revgeocode.search.hereapi.com/v1/revgeocode?at=${position.lat},${position.lng}&lang=en-US&apikey=U_ktAgnexJuV96n0rV0pnH9GN8kKRieLHlhoiMRIpbo`)
-                        .then(response => response.json())
-                        .then(data => {
-                            FileMaker.PerformScript("js_set_route_start_end", 2 + "\n" + data.items[0].address.label + '\n' + JSON.stringify(position));
-                        })
-                        .catch(err => {
-                            console.error(err);
-                         });
-                }
+                fetch(`https://revgeocode.search.hereapi.com/v1/revgeocode?at=${position.lat},${position.lng}&lang=en-US&apikey=U_ktAgnexJuV96n0rV0pnH9GN8kKRieLHlhoiMRIpbo`)
+                    .then(response => response.json())
+                    .then(data => {
+                        FileMaker.PerformScript("js_set_route_start_end", 1 + "\n" + data.items[0].address.label + '\n' + JSON.stringify(position));
+                    })
+                    .catch(err => {
+                        console.error(err);
+                    });
+            } else if (id === 'J') {
+                fetch(`https://revgeocode.search.hereapi.com/v1/revgeocode?at=${position.lat},${position.lng}&lang=en-US&apikey=U_ktAgnexJuV96n0rV0pnH9GN8kKRieLHlhoiMRIpbo`)
+                    .then(response => response.json())
+                    .then(data => {
+                        FileMaker.PerformScript("js_set_route_start_end", 2 + "\n" + data.items[0].address.label + '\n' + JSON.stringify(position));
+                    })
+                    .catch(err => {
+                        console.error(err);
+                    });
+            }
 
             return marker;
         }
@@ -236,7 +236,7 @@
         };
         const destination = {
             lat: 42.49281,
-            lng: -87.8184
+            lng: -87.8184002
         };
 
         const originMarker = addMarker(origin, 'P');
@@ -245,7 +245,7 @@
         // CALCULATE THE ROUTE BETWEEN THE TWO WAYPOINTS
         // This array holds instances of H.map.Marker representing the route waypoints
         const waypoints = []
-        
+
         // Define the routing service parameters
         const routingParams = {
             'origin': `${origin.lat},${origin.lng}`,
@@ -314,7 +314,7 @@
                         })
                         .catch(err => {
                             console.error(err);
-                         });
+                        });
                 } else if (markerId === 'J') {
                     routingParams.destination = `${coords.lat},${coords.lng}`;
                     fetch(`https://revgeocode.search.hereapi.com/v1/revgeocode?at=${coords.lat},${coords.lng}&lang=en-US&apikey=U_ktAgnexJuV96n0rV0pnH9GN8kKRieLHlhoiMRIpbo`)
@@ -324,7 +324,7 @@
                         })
                         .catch(err => {
                             console.error(err);
-                         });
+                        });
                 }
 
                 updateRoute();
