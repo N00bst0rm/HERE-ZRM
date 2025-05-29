@@ -65,33 +65,9 @@
             center: {
                 lat: <<centerLat>>,
                 lng: <<centerLng>>
-        }
+            },
+            engineType: H.Map.EngineType['2D']
         });
-
-        // Add a button to switch to satellite view
-        const satelliteBtn = document.createElement('button');
-        satelliteBtn.innerText = 'Satellite';
-        satelliteBtn.style.position = 'absolute';
-        satelliteBtn.style.top = '50px';
-        satelliteBtn.style.left = '10px';
-        satelliteBtn.style.zIndex = 1001;
-        document.body.appendChild(satelliteBtn);
-
-        satelliteBtn.onclick = function() {
-            map.setBaseLayer(defaultLayers.raster.satellite.map);
-        };
-
-        // Add a button to switch to normal view
-        const normalBtn = document.createElement('button');
-        normalBtn.innerText = 'Normal';
-        normalBtn.style.position = 'absolute';
-        normalBtn.style.top = '50px';
-        normalBtn.style.left = '100px';
-        normalBtn.style.zIndex = 1001;
-        document.body.appendChild(normalBtn);
-        normalBtn.onclick = function() {
-            map.setBaseLayer(defaultLayers.vector.normal.truck);
-        };
 
         // MapEvents enables the event system
         // Behavior implements default interactions for pan/zoom (also on mobile touch environments)
