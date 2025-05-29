@@ -67,8 +67,9 @@
     var defaultLayers = platform.createDefaultLayers({engineType});
 
     //Step 2: initialize a map
-    var map = new H.Map(document.getElementById('map'),
-      defaultLayers.vector.normal.truck, {
+    var map = new H.Map(
+      document.getElementById('map'),
+      defaultLayers.vector.normal.logistics, {
       center: { lat:<<centerLat>>, lng:<<centerLng>>},
       zoom: <<centerZoom>>,
       pixelRatio: window.devicePixelRatio || 1,
