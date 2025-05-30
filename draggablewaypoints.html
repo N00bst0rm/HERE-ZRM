@@ -7,6 +7,7 @@
     <title>Polyline on the Map</title>
     <link rel="stylesheet" type="text/css" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css" />
     <style type="text/css">
+        /* Map container fills the window */
         #map {
             position: fixed;
             top: 0;
@@ -16,11 +17,13 @@
             background: grey;
         }
 
+        /* Panel for extra controls (not used in this code) */
         #panel {
             width: 100%;
             height: 250px;
         }
 
+        /* Info box for displaying route info */
         #info-box {
             position: absolute;
             top: 10px;
@@ -35,6 +38,7 @@
             user-select: none;
         }
     </style>
+    <!-- HERE API and support scripts -->
     <script type="text/javascript" src='../test-credentials.js'></script>
     <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
     <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
@@ -46,18 +50,22 @@
 </head>
 
 <body id="markers-on-the-map">
+    <!-- Info box and map container -->
     <div id="info-box">Loading...</div>
     <div id="map"></div>
     <script type="text/javascript">
 
+    // Initialize HERE platform with API key and units (imperial/metric)
     const platform = new H.service.Platform({
         'apikey': '<<hereAPIkey>>',
         'units': '<<units>>'
     });
 
+    // Use the HARP rendering engine for vector maps
     const engineType = H.Map.EngineType['HARP'];
     const defaultLayers = platform.createDefaultLayers({ engineType });
 
+    // Create the map object, set initial zoom and center
     const map = new H.Map(
         document.getElementById("map"),
         defaultLayers.vector.normal.logistics, {
@@ -67,26 +75,38 @@
         }
     );
 
+    // Enable vehicle restriction features on the map after a short delay
     setTimeout(() => {
         map.getBaseLayer().getProvider().getStyle().setEnabledFeatures([
             { feature: "vehicle restrictions", mode: "active & inactive" },
         ]);
     }, 500);
 
+    // Enable map interaction (drag, zoom, etc.)
     const behavior = new H.mapevents.Behavior(new H.mapevents.MapEvents(map));
+    // Disable double-tap zoom (so we can use double-tap for marker removal)
     behavior.disable(H.mapevents.Behavior.Feature.DBL_TAP_ZOOM);
+    // Make map responsive to window resizing
     window.addEventListener('resize', () => map.getViewPort().resize());
+    // Add default UI controls (zoom, etc.)
     const ui = H.ui.UI.createDefault(map, defaultLayers);
 
+    // Remove the map settings control (which allows switching map types)
+    const mapSettings = ui.getControl('mapsettings');
+    if (mapSettings) ui.removeControl('mapsettings');
+
+    // Store the polyline object for the route and an array for waypoint markers
     let routePolyline;
     const waypoints = [];
 
     // --- Utility Functions ---
 
+    // Update the info box with route summary
     const updateInfoBox = content => {
         document.getElementById('info-box').innerText = content;
     };
 
+    // Reverse geocode a lat/lng to an address and notify FileMaker
     const reverseGeocodeAndNotify = (markerType, coords) => {
         fetch(`https://revgeocode.search.hereapi.com/v1/revgeocode?at=${coords.lat},${coords.lng}&lang=en-US&apikey=<<hereAPIkey>>`)
             .then(res => res.json())
@@ -99,12 +119,16 @@
             .catch(console.error);
     };
 
+    // Return a marker icon based on marker type/id
     const getMarkerIcon = id => {
         if (id === 'P') {
+            // Start marker icon
             return new H.map.Icon("<<urlIcon03>>", { size: { w: 40, h: 40 } });
         } else if (id === 'J') {
+            // End marker icon
             return new H.map.Icon("<<urlIcon04>>", { size: { w: 40, h: 40 } });
         } else {
+            // Waypoint marker: SVG circle with number
             const svgCircle = `<svg width="30" height="30" xmlns="http://www.w3.org/2000/svg">
                 <g>
                     <circle cx="15" cy="15" r="10" fill="#0099D8" stroke="#0099D8" stroke-width="4"/>
@@ -115,18 +139,21 @@
         }
     };
 
+    // Add a marker to the map and return it
     const addMarker = (position, id) => {
         const marker = new H.map.Marker(position, {
             data: { id },
             icon: getMarkerIcon(id),
-            volatility: true
+            volatility: true // marker can be dragged
         });
         marker.draggable = true;
         map.addObject(marker);
+        // If start or end marker, do reverse geocoding
         if (id === 'P' || id === 'J') reverseGeocodeAndNotify(id === 'P' ? 1 : 2, position);
         return marker;
     };
 
+    // Update all waypoint marker icons and ids after add/remove
     const updateWaypointMarkers = () => {
         waypoints.forEach((marker, idx) => {
             const id = idx + 1;
@@ -137,15 +164,18 @@
 
     // --- Routing ---
 
+    // Set up start and end points for the route
     const origin = { lat: <<StartLat>>, lng: <<StartLng>> };
     const destination = { lat: <<EndLat>>, lng: <<EndLng>> };
+    // Add start and end markers to the map
     const originMarker = addMarker(origin, 'P');
     const destinationMarker = addMarker(destination, 'J');
 
+    // Routing parameters for HERE Routing API
     const routingParams = {
         'origin': `${origin.lat},${origin.lng}`,
         'destination': `${destination.lat},${destination.lng}`,
-        'via': new H.service.Url.MultiValueQueryParameter([]),
+        'via': new H.service.Url.MultiValueQueryParameter([]), // waypoints
         'transportMode': '<<transportMode>>',
         'routingMode': '<<routingMode>>',
         'units': '<<units>>',
@@ -161,22 +191,30 @@
         'return': 'polyline,actions,instructions,summary'
     };
 
+    // Get the routing service object
     const router = platform.getRoutingService(null, 8);
 
+    // Calculate and display the route
     const updateRoute = () => {
+        // Update waypoints in routing params
         routingParams.via = new H.service.Url.MultiValueQueryParameter(
             waypoints.map(wp => `${wp.getGeometry().lat},${wp.getGeometry().lng}!passThrough=true`)
         );
+        // Call HERE Routing API
         router.calculateRoute(routingParams, routeResponseHandler, console.error);
     };
 
+    // Handle the response from the routing API
     function routeResponseHandler(response) {
         const sections = response.routes[0].sections;
         const summary = sections[0].summary;
+        // Show travel time and distance in info box
         updateInfoBox(`Travel Time: ${Math.round(summary.duration / 60)} mins\nDistance: ${(summary.length / 1000 * 0.621371).toFixed(1)} mi`);
+        // Build the polyline for the route
         const lineStrings = sections.map(section => H.geo.LineString.fromFlexiblePolyline(section.polyline));
         const multiLineString = new H.geo.MultiLineString(lineStrings);
 
+        // If polyline already exists, update it; else, create it
         if (routePolyline) {
             routePolyline.setGeometry(multiLineString);
         } else {
@@ -185,13 +223,16 @@
             });
             map.addObject(routePolyline);
         }
+        // Send route details back to FileMaker
         FileMaker.PerformScript("RTE_GetRouteInstructionsWithWaypoint", JSON.stringify(response));
     }
 
+    // Initial route calculation
     updateRoute();
 
     // --- Map Events ---
 
+    // When dragging starts on a marker, disable map panning and store pointer offset
     map.addEventListener('dragstart', ev => {
         const target = ev.target;
         const pointer = ev.currentPointer;
@@ -204,12 +245,14 @@
         }
     });
 
+    // When dragging ends on a marker, re-enable panning and update route if needed
     map.addEventListener('dragend', ev => {
         const target = ev.target;
         if (target instanceof H.map.Marker) {
             behavior.enable(H.mapevents.Behavior.Feature.PANNING);
             const coords = target.getGeometry();
             const markerId = target.getData().id;
+            // If start or end marker moved, update routing params and reverse geocode
             if (markerId === 'P' || markerId === 'J') {
                 const paramKey = markerId === 'P' ? 'origin' : 'destination';
                 routingParams[paramKey] = `${coords.lat},${coords.lng}`;
@@ -219,6 +262,7 @@
         }
     });
 
+    // While dragging a marker, update its position on the map
     map.addEventListener('drag', ev => {
         const target = ev.target;
         const pointer = ev.currentPointer;
@@ -229,6 +273,7 @@
         }
     });
 
+    // On single tap on the map (not on a marker), add a new waypoint marker
     map.addEventListener('tap', ev => {
         if (!(ev.target instanceof H.map.Marker)) {
             const coords = map.screenToGeo(ev.currentPointer.viewportX, ev.currentPointer.viewportY);
@@ -238,6 +283,7 @@
         }
     });
 
+    // On double tap on a waypoint marker (not start/end), remove it
     map.addEventListener('dbltap', ev => {
         const target = ev.target;
         if (target instanceof H.map.Marker && !['P', 'J'].includes(target.getData().id)) {
