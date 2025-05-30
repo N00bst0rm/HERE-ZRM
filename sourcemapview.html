@@ -122,6 +122,9 @@
     // Create the default UI components
     var ui = H.ui.UI.createDefault(map, defaultLayers);
 
+    // Remove the map settings control (which allows switching map types)
+    const mapSettings = ui.getControl('mapsettings');
+    if (mapSettings) ui.removeControl('mapsettings');
 
     // Now use the map as required...
     addPolylineToMap(map);
